@@ -16,7 +16,7 @@ body { font-family: 'Inter', sans-serif; overflow: hidden; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
 .message-animation { animation: slideIn 0.3s ease-out; }
 @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.context-menu { animation: fadeIn 0.15s ease-out; }
+.context-menu { animation: fadeIn 0.15s ease-out; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 .typing-indicator span { animation: typing 1.4s infinite; }
 .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
@@ -24,9 +24,11 @@ body { font-family: 'Inter', sans-serif; overflow: hidden; }
 @keyframes typing { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
 .unread-badge { animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-.send-animation { animation: sendPulse 0.4s ease-out; }
-@keyframes sendPulse { 0% { transform: scale(1); } 50% { transform: scale(0.9); } 100% { transform: scale(1); } }
 .format-btn.active { background: rgba(147, 51, 234, 0.3); }
+.avatar-select { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.avatar-option { font-size: 32px; cursor: pointer; padding: 8px; border-radius: 8px; transition: all 0.2s; }
+.avatar-option:hover { background: rgba(147, 51, 234, 0.2); transform: scale(1.1); }
+.avatar-option.selected { background: rgba(147, 51, 234, 0.4); }
 </style>
 </head>
 <body>
@@ -56,9 +58,10 @@ Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke=
 Reply: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>,
 Copy: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
 Code: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>,
-UserPlus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>,
-Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+User: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
 };
+
+const AVATARS = ['👤', '👨', '👩', '👨‍💼', '👩‍💼', '👨‍🎓', '👩‍🎓', '👨‍💻', '👩‍💻', '👨‍🔬', '👩‍🔬', '👑', '🤖', '👽', '👾', '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦄', '🦋', '🌸'];
 
 function NexusApp() {
 const [ws, setWs] = useState(null);
@@ -77,12 +80,13 @@ const [sidebarView, setSidebarView] = useState('chats');
 const [searchQuery, setSearchQuery] = useState('');
 const [theme, setTheme] = useState('dark');
 const [showSettings, setShowSettings] = useState(false);
+const [showProfile, setShowProfile] = useState(false);
 const [showCreateModal, setShowCreateModal] = useState(null);
 const [showInviteLink, setShowInviteLink] = useState(false);
 const [showAdminPanel, setShowAdminPanel] = useState(false);
-const [showSearchUsers, setShowSearchUsers] = useState(false);
 const [loginForm, setLoginForm] = useState({ username: '', password: '' });
 const [registerForm, setRegisterForm] = useState({ username: '', password: '', confirmPassword: '' });
+const [profileForm, setProfileForm] = useState({ avatar: '👤', bio: '' });
 const [isRegistering, setIsRegistering] = useState(false);
 const [selectedFiles, setSelectedFiles] = useState([]);
 const [contextMenu, setContextMenu] = useState(null);
@@ -92,11 +96,9 @@ const [typingUsers, setTypingUsers] = useState({});
 const [onlineUsers, setOnlineUsers] = useState(new Set());
 const [inviteLink, setInviteLink] = useState('');
 const [apiKey, setApiKey] = useState('');
-const [sessions, setSessions] = useState([]);
 const [serverHost, setServerHost] = useState('');
-const [searchResults, setSearchResults] = useState([]);
 const [channelForm, setChannelForm] = useState({ name: '', username: '', description: '' });
-const [groupForm, setGroupForm] = useState({ name: '', description: '', members: [] });
+const [groupForm, setGroupForm] = useState({ name: '', description: '' });
 const [formatting, setFormatting] = useState({ bold: false, italic: false, underline: false, strikethrough: false });
 
 const fileInputRef = useRef(null);
@@ -124,7 +126,7 @@ const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const websocket = new WebSocket(`${protocol}//${window.location.host}`);
 
 websocket.onopen = () => {
-console.log('Connected to Nexus');
+console.log('Connected');
 setWs(websocket);
 };
 
@@ -133,14 +135,8 @@ const data = JSON.parse(event.data);
 handleWebSocketMessage(data);
 };
 
-websocket.onerror = (error) => {
-console.error('WebSocket error:', error);
-};
-
-websocket.onclose = () => {
-console.log('Disconnected');
-setTimeout(connectWebSocket, 3000);
-};
+websocket.onerror = () => console.error('WS Error');
+websocket.onclose = () => setTimeout(connectWebSocket, 3000);
 };
 
 const handleWebSocketMessage = (data) => {
@@ -153,7 +149,6 @@ setGroups(data.groups || []);
 setChannels(data.channels || []);
 setMessages(data.messages || {});
 setUnreadCounts(data.unreadCounts || {});
-setSessions(data.user.sessions || []);
 setApiKey(data.user.apiKey || '');
 setServerHost(data.serverHost || window.location.host);
 setView('messenger');
@@ -164,7 +159,7 @@ case 'register_failed':
 alert(data.error);
 break;
 case 'register_success':
-alert('Регистрация успешна! Войдите');
+alert('Успешно! Войдите');
 setIsRegistering(false);
 break;
 case 'new_message':
@@ -215,12 +210,6 @@ setChannels(prev => [...prev, data.channel]);
 setGroups(prev => [...prev, data.group]);
 }
 break;
-case 'channel_updated':
-setChannels(prev => prev.map(ch => ch.id === data.channel.id ? data.channel : ch));
-break;
-case 'group_updated':
-setGroups(prev => prev.map(gr => gr.id === data.group.id ? data.group : gr));
-break;
 case 'user_status':
 setUsers(prev => ({
 ...prev,
@@ -239,6 +228,9 @@ setUsers(prev => ({
 [data.user.id]: { ...prev[data.user.id], ...data.user }
 }));
 break;
+case 'profile_updated':
+setCurrentUser(data.user);
+break;
 case 'developer_mode_updated':
 if (data.apiKey) setApiKey(data.apiKey);
 break;
@@ -248,17 +240,11 @@ setTypingUsers(prev => ({
 [data.chatId]: { ...prev[data.chatId], [data.userId]: data.isTyping }
 }));
 break;
-case 'search_results':
-setSearchResults(data.results);
-break;
 case 'unread_updated':
 setUnreadCounts(prev => ({
 ...prev,
 [data.chatId]: data.count
 }));
-break;
-case 'error':
-alert(data.error);
 break;
 }
 };
@@ -273,8 +259,7 @@ const handleLogin = () => {
 sendWsMessage({
 type: 'auth',
 username: loginForm.username,
-password: loginForm.password,
-device: 'Web Browser'
+password: loginForm.password
 });
 };
 
@@ -290,6 +275,15 @@ password: registerForm.password
 });
 };
 
+const updateProfile = () => {
+sendWsMessage({
+type: 'update_profile',
+avatar: profileForm.avatar,
+bio: profileForm.bio
+});
+setShowProfile(false);
+};
+
 const compressImage = async (file) => {
 return new Promise((resolve) => {
 const reader = new FileReader();
@@ -297,8 +291,7 @@ reader.onload = (e) => {
 const img = new Image();
 img.onload = () => {
 const canvas = document.createElement('canvas');
-let width = img.width;
-let height = img.height;
+let width = img.width, height = img.height;
 const maxSize = 800;
 if (width > height && width > maxSize) {
 height *= maxSize / width;
@@ -332,9 +325,7 @@ const reader = new FileReader();
 reader.onload = (e) => {
 let data = e.target.result;
 const limit = currentUser.isPremium ? 700 * 1024 : 70 * 1024;
-if (data.length > limit) {
-data = data.substring(0, limit);
-}
+if (data.length > limit) data = data.substring(0, limit);
 resolve({ data, size: data.length, name: file.name });
 };
 reader.readAsDataURL(file);
@@ -354,8 +345,6 @@ setSelectedFiles([...selectedFiles, ...processed]);
 const sendMessage = () => {
 if (!inputMessage.trim() && selectedFiles.length === 0) return;
 
-const chatId = activeChat;
-
 const formattingData = {
 bold: formatting.bold,
 italic: formatting.italic,
@@ -366,7 +355,7 @@ strikethrough: formatting.strikethrough
 if (editingMessage) {
 sendWsMessage({
 type: 'edit_message',
-chatId,
+chatId: activeChat,
 messageId: editingMessage.id,
 text: inputMessage,
 formatting: formattingData
@@ -376,7 +365,7 @@ setEditingMessage(null);
 if (inputMessage.trim()) {
 sendWsMessage({
 type: 'message',
-chatId,
+chatId: activeChat,
 text: inputMessage,
 messageType: 'text',
 replyTo: replyingTo?.id,
@@ -387,7 +376,7 @@ formatting: formattingData
 selectedFiles.forEach(file => {
 sendWsMessage({
 type: 'message',
-chatId,
+chatId: activeChat,
 messageType: file.type,
 fileData: file.data,
 fileName: file.name
@@ -400,9 +389,7 @@ setSelectedFiles([]);
 setReplyingTo(null);
 setFormatting({ bold: false, italic: false, underline: false, strikethrough: false });
 sendTyping(false);
-
-// Mark as read
-sendWsMessage({ type: 'mark_read', chatId });
+sendWsMessage({ type: 'mark_read', chatId: activeChat });
 };
 
 const sendTyping = (isTyping) => {
@@ -428,9 +415,7 @@ setContextMenu(null);
 const startEditMessage = (message) => {
 setEditingMessage(message);
 setInputMessage(message.text);
-if (message.formatting) {
-setFormatting(message.formatting);
-}
+if (message.formatting) setFormatting(message.formatting);
 setContextMenu(null);
 };
 
@@ -446,7 +431,7 @@ setContextMenu(null);
 
 const createChannel = () => {
 if (!channelForm.name || !channelForm.username) {
-alert('Заполните все поля');
+alert('Заполните поля');
 return;
 }
 sendWsMessage({
@@ -461,24 +446,16 @@ setShowCreateModal(null);
 
 const createGroup = () => {
 if (!groupForm.name) {
-alert('Введите название группы');
+alert('Введите название');
 return;
 }
 sendWsMessage({
 type: 'create_group',
 name: groupForm.name,
-description: groupForm.description,
-members: groupForm.members
+description: groupForm.description
 });
-setGroupForm({ name: '', description: '', members: [] });
+setGroupForm({ name: '', description: '' });
 setShowCreateModal(null);
-};
-
-const searchUsers = () => {
-if (searchQuery) {
-sendWsMessage({ type: 'search_users', query: searchQuery });
-setShowSearchUsers(true);
-}
 };
 
 const generateInviteLink = () => {
@@ -489,11 +466,10 @@ groups.find(gr => gr.id === activeChat) : null;
 
 if (current && current.inviteLink) {
 setInviteLink(current.inviteLink);
-} else {
-const code = Math.random().toString(36).substring(2, 10);
-setInviteLink(`http://${serverHost}/invite/${code}`);
-}
 setShowInviteLink(true);
+} else {
+alert('Пригласительные ссылки только для групп и каналов');
+}
 };
 
 const toggleDeveloperMode = (enabled) => {
@@ -521,18 +497,17 @@ setFormatting(prev => ({ ...prev, [type]: !prev[type] }));
 
 const applyFormatting = (text, fmt) => {
 if (!fmt) return text;
-let result = text;
-if (fmt.bold) result = <strong>{result}</strong>;
-if (fmt.italic) result = <em>{result}</em>;
-if (fmt.underline) result = <u>{result}</u>;
-if (fmt.strikethrough) result = <s>{result}</s>;
-return result;
+let style = {};
+if (fmt.bold) style.fontWeight = 'bold';
+if (fmt.italic) style.fontStyle = 'italic';
+if (fmt.underline) style.textDecoration = 'underline';
+if (fmt.strikethrough) style.textDecoration = 'line-through';
+return <span style={style}>{text}</span>;
 };
 
 const chatMessages = activeChat && messages[activeChat] ? messages[activeChat] : [];
 const isTyping = typingUsers[activeChat];
 
-// Login View
 if (view === 'login') {
 return (
 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -540,7 +515,7 @@ return (
 <div className="text-center mb-8">
 <div className="text-7xl mb-4">⬡</div>
 <h1 className="text-4xl font-bold text-white mb-2">Nexus</h1>
-<p className="text-gray-400 text-sm">Secure Messaging Platform</p>
+<p className="text-gray-400 text-sm">Secure Messaging</p>
 </div>
 
 {!isRegistering ? (
@@ -554,16 +529,13 @@ onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
 className="w-full px-5 py-3.5 bg-gray-800/80 text-white rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none"
 onKeyPress={(e) => e.key === 'Enter' && handleLogin()} />
 <button onClick={handleLogin}
-className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg">
+className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-blue-700 shadow-lg">
 Sign In
 </button>
 <button onClick={() => setIsRegistering(true)}
 className="w-full py-3.5 bg-gray-800/80 text-white rounded-xl font-semibold hover:bg-gray-700/80 border border-gray-700">
 Create Account
 </button>
-<p className="text-xs text-gray-500 text-center mt-4">
-Demo: Mimimitya / nexus2026
-</p>
 </div>
 ) : (
 <div className="space-y-4">
@@ -573,7 +545,7 @@ className="w-full px-5 py-3.5 bg-gray-800/80 text-white rounded-xl border border
 <input type="password" placeholder="Password" value={registerForm.password}
 onChange={(e) => setRegisterForm({...registerForm, password: e.target.value})}
 className="w-full px-5 py-3.5 bg-gray-800/80 text-white rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none" />
-<input type="password" placeholder="Confirm Password" value={registerForm.confirmPassword}
+<input type="password" placeholder="Confirm" value={registerForm.confirmPassword}
 onChange={(e) => setRegisterForm({...registerForm, confirmPassword: e.target.value})}
 className="w-full px-5 py-3.5 bg-gray-800/80 text-white rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none" />
 <button onClick={handleRegister}
@@ -591,12 +563,11 @@ Back
 );
 }
 
-// Main Messenger
 return (
 <div className={`h-screen flex ${theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-gray-50 text-gray-900'}`}>
 {/* Sidebar */}
 <div className={`w-80 flex flex-col ${theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} border-r`}>
-<div className={`p-4 ${theme === 'dark' ? 'bg-gray-800/50' : 'bg-gray-50'} border-b ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
+<div className={`p-4 ${theme === 'dark' ? 'bg-gray-800/50' : 'bg-gray-50'} border-b border-gray-800`}>
 <div className="flex items-center justify-between mb-3">
 <h2 className="text-xl font-bold flex items-center gap-2">
 <span className="text-2xl">⬡</span> Nexus
@@ -615,12 +586,11 @@ return (
 <div className="absolute left-3 top-2.5"><Icons.Search /></div>
 <input type="text" placeholder="Search..." value={searchQuery}
 onChange={(e) => setSearchQuery(e.target.value)}
-onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
 className={`w-full pl-10 pr-4 py-2 ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-100'} rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500`} />
 </div>
 </div>
 
-<div className={`flex ${theme === 'dark' ? 'bg-gray-800/30' : 'bg-gray-50'} border-b ${theme === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
+<div className={`flex ${theme === 'dark' ? 'bg-gray-800/30' : 'bg-gray-50'} border-b border-gray-800`}>
 <button onClick={() => setSidebarView('chats')}
 className={`flex-1 py-3 text-sm font-medium ${sidebarView === 'chats' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-gray-500'}`}>
 Chats
@@ -636,9 +606,11 @@ Channels
 </div>
 
 <div className="flex-1 overflow-y-auto custom-scrollbar">
-{sidebarView === 'chats' && Object.values(users).filter(u => u.id !== currentUser?.id && !u.isBot).map(user => (
-<div key={user.id} onClick={() => { setActiveChat([currentUser.id, user.id].sort().join('_')); setActiveChatType('chat'); }}
-className={`p-4 cursor-pointer ${activeChat === [currentUser.id, user.id].sort().join('_') ? 'bg-purple-600/20' : 'hover:bg-gray-800/30'} border-b border-gray-800`}>
+{sidebarView === 'chats' && Object.values(users).filter(u => u.id !== currentUser?.id && !u.isBot).map(user => {
+const chatId = [currentUser.id, user.id].sort().join('_');
+return (
+<div key={user.id} onClick={() => { setActiveChat(chatId); setActiveChatType('chat'); }}
+className={`p-4 cursor-pointer ${activeChat === chatId ? 'bg-purple-600/20' : 'hover:bg-gray-800/30'} border-b border-gray-800`}>
 <div className="flex items-center gap-3">
 <div className="relative">
 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-2xl">{user.avatar}</div>
@@ -650,16 +622,17 @@ className={`p-4 cursor-pointer ${activeChat === [currentUser.id, user.id].sort()
 {user.verified && <span className="text-blue-400 text-sm">✓</span>}
 {user.isPremium && <Icons.Crown />}
 </div>
-<p className="text-sm text-gray-500 truncate">{user.status}</p>
+<p className="text-sm text-gray-500 truncate">{user.bio || user.status}</p>
 </div>
-{unreadCounts[[currentUser.id, user.id].sort().join('_')] > 0 && (
+{unreadCounts[chatId] > 0 && (
 <div className="unread-badge bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded-full">
-{unreadCounts[[currentUser.id, user.id].sort().join('_')]}
+{unreadCounts[chatId]}
 </div>
 )}
 </div>
 </div>
-))}
+);
+})}
 
 {sidebarView === 'groups' && (
 <>
@@ -672,7 +645,7 @@ className="w-full p-4 flex items-center gap-3 hover:bg-gray-800/30 border-b bord
 <div key={group.id} onClick={() => { setActiveChat(group.id); setActiveChatType('group'); }}
 className={`p-4 cursor-pointer ${activeChat === group.id ? 'bg-purple-600/20' : 'hover:bg-gray-800/30'} border-b border-gray-800`}>
 <div className="flex items-center gap-3">
-<div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-2xl">{group.avatar || '👥'}</div>
+<div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-2xl">{group.avatar}</div>
 <div className="flex-1 min-w-0">
 <div className="font-semibold truncate">{group.name}</div>
 <p className="text-sm text-gray-500 truncate">{group.members?.length} members</p>
@@ -718,7 +691,7 @@ className={`p-4 cursor-pointer ${activeChat === channel.id ? 'bg-purple-600/20' 
 
 <div className={`p-4 ${theme === 'dark' ? 'bg-gray-800/50' : 'bg-gray-50'} border-t border-gray-800`}>
 <div className="flex items-center gap-3">
-<div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xl">{currentUser?.avatar}</div>
+<div onClick={() => setShowProfile(true)} className="cursor-pointer w-11 h-11 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xl hover:scale-110 transition-transform">{currentUser?.avatar}</div>
 <div className="flex-1 min-w-0">
 <div className="flex items-center gap-1.5">
 <span className="font-semibold truncate text-sm">{currentUser?.username}</span>
@@ -732,12 +705,11 @@ className={`p-4 cursor-pointer ${activeChat === channel.id ? 'bg-purple-600/20' 
 </div>
 </div>
 
-{/* Main Chat Area */}
+{/* Main Chat */}
 <div className="flex-1 flex flex-col">
 {activeChat ? (
 <>
-{/* Chat Header */}
-<div className={`p-4 ${theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} border-b flex items-center justify-between`}>
+<div className={`p-4 ${theme === 'dark' ? 'bg-gray-900' : 'bg-white'} border-b border-gray-800 flex items-center justify-between`}>
 <div className="flex items-center gap-3">
 {activeChatType === 'chat' ? (
 <>
@@ -755,7 +727,7 @@ className={`p-4 cursor-pointer ${activeChat === channel.id ? 'bg-purple-600/20' 
 ) : activeChatType === 'group' ? (
 <>
 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-{groups.find(gr => gr.id === activeChat)?.avatar || '👥'}
+{groups.find(gr => gr.id === activeChat)?.avatar}
 </div>
 <div>
 <div className="font-semibold">{groups.find(gr => gr.id === activeChat)?.name}</div>
@@ -776,14 +748,15 @@ className={`p-4 cursor-pointer ${activeChat === channel.id ? 'bg-purple-600/20' 
 <div className="flex gap-2">
 <button className="p-2.5 hover:bg-gray-700/50 rounded-lg"><Icons.Phone /></button>
 <button className="p-2.5 hover:bg-gray-700/50 rounded-lg"><Icons.Video /></button>
+{(activeChatType === 'group' || activeChatType === 'channel') && (
 <button onClick={generateInviteLink} className="p-2.5 hover:bg-gray-700/50 rounded-lg"><Icons.Users /></button>
+)}
 {currentUser?.isSuperAdmin && (
 <button onClick={() => setShowAdminPanel(!showAdminPanel)} className="p-2.5 hover:bg-gray-700/50 rounded-lg"><Icons.Shield /></button>
 )}
 </div>
 </div>
 
-{/* Messages */}
 <div className={`flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar ${theme === 'dark' ? 'bg-gray-950' : 'bg-gray-50'}`}>
 {chatMessages.map((msg, idx) => {
 const isOwn = msg.sender === currentUser?.id;
@@ -816,12 +789,10 @@ onContextMenu={(e) => handleContextMenu(e, msg)}>
 </div>
 )}
 
-<div className="flex items-center justify-between mt-1">
-<p className="text-xs text-gray-400">
+<p className="text-xs text-gray-400 mt-1">
 {new Date(msg.timestamp).toLocaleTimeString()}
 {msg.edited && ' (edited)'}
 </p>
-</div>
 
 {msg.reactions && Object.keys(msg.reactions).length > 0 && (
 <div className="flex gap-1 mt-2 flex-wrap">
@@ -862,18 +833,16 @@ className="hover:scale-125 transition-transform text-xs opacity-50 hover:opacity
 <div ref={messagesEndRef} />
 </div>
 
-{/* Reply Preview */}
 {replyingTo && (
 <div className={`px-4 py-2 ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'} border-t border-gray-800 flex items-center justify-between`}>
 <div className="flex-1">
-<p className="text-xs text-purple-400">Replying to {users[replyingTo.sender]?.username}</p>
+<p className="text-xs text-purple-400">Reply to {users[replyingTo.sender]?.username}</p>
 <p className="text-sm truncate">{replyingTo.text}</p>
 </div>
 <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-gray-700/50 rounded"><Icons.X /></button>
 </div>
 )}
 
-{/* Selected Files */}
 {selectedFiles.length > 0 && (
 <div className={`p-2 ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'} border-t border-gray-800`}>
 <div className="flex gap-2 overflow-x-auto">
@@ -894,13 +863,12 @@ className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-c
 </div>
 )}
 
-{/* Input */}
-<div className={`p-4 ${theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} border-t`}>
+<div className={`p-4 ${theme === 'dark' ? 'bg-gray-900' : 'bg-white'} border-t border-gray-800`}>
 <div className="flex gap-2 mb-2">
-<button onClick={() => formatText('bold')} className={`format-btn p-2 rounded ${formatting.bold ? 'active' : ''}`}><strong>B</strong></button>
-<button onClick={() => formatText('italic')} className={`format-btn p-2 rounded ${formatting.italic ? 'active'  : ''}`}><em>I</em></button>
-<button onClick={() => formatText('underline')} className={`format-btn p-2 rounded ${formatting.underline ? 'active' : ''}`}><u>U</u></button>
-<button onClick={() => formatText('strikethrough')} className={`format-btn p-2 rounded ${formatting.strikethrough ? 'active' : ''}`}><s>S</s></button>
+<button onClick={() => formatText('bold')} className={`format-btn p-2 rounded hover:bg-gray-700 ${formatting.bold ? 'active' : ''}`}><strong>B</strong></button>
+<button onClick={() => formatText('italic')} className={`format-btn p-2 rounded hover:bg-gray-700 ${formatting.italic ? 'active' : ''}`}><em>I</em></button>
+<button onClick={() => formatText('underline')} className={`format-btn p-2 rounded hover:bg-gray-700 ${formatting.underline ? 'active' : ''}`}><u>U</u></button>
+<button onClick={() => formatText('strikethrough')} className={`format-btn p-2 rounded hover:bg-gray-700 ${formatting.strikethrough ? 'active' : ''}`}><s>S</s></button>
 </div>
 <div className="flex items-center gap-2">
 <input type="file" ref={imageInputRef} accept="image/*" onChange={(e) => handleFileSelect(e, 'image')} className="hidden" multiple />
@@ -919,7 +887,7 @@ className={`flex-1 px-4 py-2.5 ${theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100
 className="p-2.5 hover:bg-gray-700/50 rounded-lg text-red-500"><Icons.X /></button>
 )}
 
-<button onClick={sendMessage} className="send-animation p-2.5 bg-purple-600 hover:bg-purple-700 rounded-full"><Icons.Send /></button>
+<button onClick={sendMessage} className="p-2.5 bg-purple-600 hover:bg-purple-700 rounded-full transition-colors"><Icons.Send /></button>
 </div>
 </div>
 </>
@@ -928,7 +896,7 @@ className="p-2.5 hover:bg-gray-700/50 rounded-lg text-red-500"><Icons.X /></butt
 <div className="text-center">
 <div className="text-7xl mb-4">⬡</div>
 <h3 className="text-2xl font-semibold mb-2">Select a chat</h3>
-<p className="text-gray-400">Choose a conversation to start messaging</p>
+<p className="text-gray-400">Choose a conversation</p>
 </div>
 </div>
 )}
@@ -936,8 +904,8 @@ className="p-2.5 hover:bg-gray-700/50 rounded-lg text-red-500"><Icons.X /></butt
 
 {/* Context Menu */}
 {contextMenu && (
-<div className="fixed context-menu bg-gray-800 rounded-xl py-2 z-50 min-w-[180px] border border-gray-700 shadow-2xl"
-style={{ left: contextMenu.x, top: contextMenu.y }}>
+<div className="fixed context-menu bg-gray-800 rounded-xl py-2 z-50 min-w-[180px] border border-gray-700"
+style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(e) => e.stopPropagation()}>
 {contextMenu.message.sender === currentUser?.id && (
 <>
 <button onClick={() => startEditMessage(contextMenu.message)}
@@ -953,10 +921,43 @@ className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center gap-3"
 </div>
 )}
 
-{/* Modals */}
+{/* Profile Modal */}
+{showProfile && (
+<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md">
+<div className="flex items-center justify-between mb-6">
+<h2 className="text-2xl font-bold">Edit Profile</h2>
+<button onClick={() => setShowProfile(false)} className="p-2 hover:bg-gray-700/50 rounded-lg"><Icons.X /></button>
+</div>
+<div className="space-y-4">
+<div>
+<label className="text-sm text-gray-400 mb-2 block">Avatar</label>
+<div className="avatar-select max-h-64 overflow-y-auto custom-scrollbar p-2 bg-gray-800 rounded-xl">
+{AVATARS.map(av => (
+<div key={av} onClick={() => setProfileForm({...profileForm, avatar: av})}
+className={`avatar-option ${profileForm.avatar === av ? 'selected' : ''}`}>{av}</div>
+))}
+</div>
+</div>
+<div>
+<label className="text-sm text-gray-400 mb-2 block">Bio</label>
+<textarea placeholder="About you..." value={profileForm.bio}
+onChange={(e) => setProfileForm({...profileForm, bio: e.target.value})}
+className="w-full px-4 py-3 bg-gray-800 text-white rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none resize-none" rows="3" />
+</div>
+<button onClick={updateProfile}
+className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-blue-700">
+Save
+</button>
+</div>
+</div>
+</div>
+)}
+
+{/* Create Modals */}
 {showCreateModal === 'channel' && (
-<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-800">
+<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md">
 <div className="flex items-center justify-between mb-6">
 <h2 className="text-2xl font-bold">Create Channel</h2>
 <button onClick={() => setShowCreateModal(null)} className="p-2 hover:bg-gray-700/50 rounded-lg"><Icons.X /></button>
@@ -981,8 +982,8 @@ Create
 )}
 
 {showCreateModal === 'group' && (
-<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-800">
+<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md">
 <div className="flex items-center justify-between mb-6">
 <h2 className="text-2xl font-bold">Create Group</h2>
 <button onClick={() => setShowCreateModal(null)} className="p-2 hover:bg-gray-700/50 rounded-lg"><Icons.X /></button>
@@ -1004,8 +1005,8 @@ Create
 )}
 
 {showInviteLink && (
-<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-800">
+<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md">
 <div className="flex items-center justify-between mb-6">
 <h2 className="text-2xl font-bold">Invite Link</h2>
 <button onClick={() => setShowInviteLink(false)} className="p-2 hover:bg-gray-700/50 rounded-lg"><Icons.X /></button>
@@ -1014,7 +1015,7 @@ Create
 <div className="p-4 bg-gray-800 rounded-xl">
 <code className="text-sm break-all">{inviteLink}</code>
 </div>
-<button onClick={() => navigator.clipboard.writeText(inviteLink)}
+<button onClick={() => { navigator.clipboard.writeText(inviteLink); alert('Скопировано!'); }}
 className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2">
 <Icons.Copy /> Copy Link
 </button>
@@ -1024,8 +1025,8 @@ className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl f
 )}
 
 {showSettings && (
-<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar shadow-2xl border border-gray-800">
+<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
 <div className="flex items-center justify-between mb-6">
 <h2 className="text-2xl font-bold">Settings</h2>
 <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-700/50 rounded-lg"><Icons.X /></button>
@@ -1060,11 +1061,12 @@ className={`w-12 h-6 rounded-full ${currentUser?.developerMode ? 'bg-purple-600'
 <div className="p-3 bg-gray-800/50 rounded-lg mt-3">
 <div className="flex items-center justify-between mb-2">
 <span className="text-sm text-gray-400">API Key</span>
-<button onClick={() => navigator.clipboard.writeText(apiKey)} className="text-purple-400 text-sm flex items-center gap-1">
+<button onClick={() => { navigator.clipboard.writeText(apiKey); alert('Copied!'); }} className="text-purple-400 text-sm flex items-center gap-1">
 <Icons.Copy /> Copy
 </button>
 </div>
 <code className="text-xs bg-gray-900 p-2 rounded block overflow-x-auto">{apiKey}</code>
+<p className="text-xs text-gray-500 mt-2">Chat with Robot Builder for commands</p>
 </div>
 )}
 </div>
@@ -1074,8 +1076,8 @@ className={`w-12 h-6 rounded-full ${currentUser?.developerMode ? 'bg-purple-600'
 )}
 
 {showAdminPanel && currentUser?.isSuperAdmin && (
-<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar shadow-2xl border border-gray-800">
+<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+<div className="bg-gray-900 rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar">
 <div className="flex items-center justify-between mb-6">
 <h2 className="text-2xl font-bold flex items-center gap-2"><Icons.Shield /> Admin Panel</h2>
 <button onClick={() => setShowAdminPanel(false)} className="p-2 hover:bg-gray-700/50 rounded-lg"><Icons.X /></button>
@@ -1083,35 +1085,33 @@ className={`w-12 h-6 rounded-full ${currentUser?.developerMode ? 'bg-purple-600'
 <div className="space-y-4">
 {Object.values(users).filter(u => !u.isBot).map(user => (
 <div key={user.id} className="p-4 bg-gray-800/50 rounded-xl">
-<div className="flex items-center justify-between mb-3">
-<div className="flex items-center gap-3">
+<div className="flex items-center gap-3 mb-3">
 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-2xl">{user.avatar}</div>
-<div>
+<div className="flex-1">
 <div className="flex items-center gap-2">
 <span className="font-semibold">{user.username}</span>
 {user.verified && <span className="text-blue-400">✓</span>}
 {user.isPremium && <Icons.Crown />}
 {user.isSuperAdmin && <Icons.Shield />}
 </div>
-<p className="text-sm text-gray-400">ID: {user.id}</p>
-</div>
+<p className="text-sm text-gray-400">{user.bio || 'No bio'}</p>
 </div>
 </div>
 <div className="flex gap-2 flex-wrap">
 <button onClick={() => adminAction(user.id, 'toggle_premium')}
-className={`px-3 py-1.5 rounded-lg text-sm font-medium ${user.isPremium ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-700'}`}>
+className={`px-3 py-1.5 rounded-lg text-sm ${user.isPremium ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-700 hover:bg-gray-600'}`}>
 {user.isPremium ? '− Premium' : '+ Premium'}
 </button>
 <button onClick={() => adminAction(user.id, 'toggle_verified')}
-className={`px-3 py-1.5 rounded-lg text-sm font-medium ${user.verified ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700'}`}>
+className={`px-3 py-1.5 rounded-lg text-sm ${user.verified ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-700 hover:bg-gray-600'}`}>
 {user.verified ? '− Verified' : '+ Verified'}
 </button>
 <button onClick={() => adminAction(user.id, 'toggle_ban')}
-className={`px-3 py-1.5 rounded-lg text-sm font-medium ${user.banned ? 'bg-red-500/20 text-red-400' : 'bg-gray-700'}`}>
+className={`px-3 py-1.5 rounded-lg text-sm ${user.banned ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 hover:bg-gray-600'}`}>
 {user.banned ? 'Unban' : 'Ban'}
 </button>
 <button onClick={() => adminAction(user.id, 'toggle_mute')}
-className={`px-3 py-1.5 rounded-lg text-sm font-medium ${user.muted ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-700'}`}>
+className={`px-3 py-1.5 rounded-lg text-sm ${user.muted ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-700 hover:bg-gray-600'}`}>
 {user.muted ? 'Unmute' : 'Mute'}
 </button>
 </div>
