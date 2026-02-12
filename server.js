@@ -19,10 +19,18 @@ let db = {
   chats: {},
   channels: {},
   groups: {},
+  servers: {},
   messages: {},
   unreadCounts: {},
   bots: {},
-  dailyUsage: {}
+  dailyUsage: {},
+  friends: {},
+  friendRequests: {},
+  blockedUsers: {},
+  pinnedChats: {},
+  pinnedMessages: {},
+  stickerPacks: {},
+  userStickers: {}
 };
 
 function loadDB() {
@@ -74,6 +82,33 @@ function initializeDefaultUsers() {
     status: 'online',
     createdAt: Date.now()
   };
+  
+  db.users['sticker_bot'] = {
+    id: 'sticker_bot',
+    username: 'Sticker Bot',
+    isBot: true,
+    avatar: '🎨',
+    bio: 'Sticker pack manager',
+    status: 'online',
+    createdAt: Date.now()
+  };
+  
+  db.users['support_bot'] = {
+    id: 'support_bot',
+    username: 'Support',
+    isBot: true,
+    avatar: '💬',
+    bio: 'Support assistant',
+    status: 'online',
+    createdAt: Date.now()
+  };
+  
+  // Инициализация стикерпаков по умолчанию
+  db.stickerPacks['default'] = {
+    id: 'default',
+    name: 'Default Stickers',
+    stickers: ['😀', '😂', '❤️', '👍', '🔥', '🎉', '😊', '😎', '🤔', '😍']
+  };
 }
 
 loadDB();
@@ -116,6 +151,7 @@ function sendToUser(userId, data) {
 
 function createChat(user1Id, user2Id) {
   const chatId = [user1Id, user2Id].sort().join('_');
+  
   if (!db.chats[chatId]) {
     db.chats[chatId] = {
       id: chatId,
@@ -144,7 +180,8 @@ function createGroup(name, creatorId, members = []) {
     members: [creatorId, ...members.filter(m => m !== creatorId)],
     createdAt: Date.now(),
     inviteCode,
-    avatar: '👥'
+    avatar: '👥',
+    isServer: false
   };
   
   db.messages[groupId] = [];
@@ -176,6 +213,36 @@ function createChannel(name, username, description, creatorId) {
   return db.channels[channelId];
 }
 
+function createServer(groupId) {
+  const group = db.groups[groupId];
+  if (!group) return null;
+  
+  const serverId = 'srv_' + crypto.randomBytes(8).toString('hex');
+  
+  db.servers[serverId] = {
+    id: serverId,
+    groupId,
+    name: group.name,
+    categories: [{
+      id: 'cat_default',
+      name: 'General',
+      channels: [{
+        id: 'ch_general',
+        name: 'general',
+        type: 'text'
+      }]
+    }],
+    roles: [],
+    forumChannels: []
+  };
+  
+  group.isServer = true;
+  group.serverId = serverId;
+  
+  saveDB();
+  return db.servers[serverId];
+}
+
 function incrementUnread(chatId, userId) {
   if (!db.unreadCounts[chatId]) db.unreadCounts[chatId] = {};
   db.unreadCounts[chatId][userId] = (db.unreadCounts[chatId][userId] || 0) + 1;
@@ -187,15 +254,35 @@ function resetUnread(chatId, userId) {
   }
 }
 
-function sendRobotBuilderWelcome(userId) {
-  const apiKey = generateApiKey();
-  const chatId = createChat('robot_builder_bot', userId);
+function sendBotWelcome(botId, userId, message) {
+  const chatId = createChat(botId, userId);
   
-  const message = {
+  const msg = {
     id: crypto.randomBytes(8).toString('hex'),
     chatId,
-    sender: 'robot_builder_bot',
-    text: `👋 Добро пожаловать в Robot Builder!
+    sender: botId,
+    text: message,
+    timestamp: Date.now(),
+    type: 'text',
+    reactions: {}
+  };
+  
+  if (!db.messages[chatId]) db.messages[chatId] = [];
+  db.messages[chatId].push(msg);
+  
+  incrementUnread(chatId, userId);
+  saveDB();
+  
+  sendToUser(userId, { type: 'new_message', message: msg });
+  return { message: msg, chatId };
+}
+
+function sendRobotBuilderWelcome(userId) {
+  const apiKey = generateApiKey();
+  const user = db.users[userId];
+  if (user) user.apiKey = apiKey;
+  
+  const text = `👋 Добро пожаловать в Robot Builder!
 
 Вы активировали режим разработчика. Ваш API ключ:
 
@@ -207,24 +294,11 @@ ${apiKey}
 /help - помощь
 
 🔗 API: https://api.nexus.app
-📚 Docs: https://docs.nexus.app`,
-    timestamp: Date.now(),
-    type: 'text',
-    reactions: {}
-  };
+📚 Docs: https://docs.nexus.app`;
   
-  if (!db.messages[chatId]) db.messages[chatId] = [];
-  db.messages[chatId].push(message);
-  
-  const user = db.users[userId];
-  if (user) {
-    user.apiKey = apiKey;
-  }
-  
+  const result = sendBotWelcome('robot_builder_bot', userId, text);
   saveDB();
-  
-  sendToUser(userId, { type: 'new_message', message });
-  return message;
+  return { ...result, apiKey };
 }
 
 wss.on('connection', (ws, req) => {
@@ -241,10 +315,29 @@ wss.on('connection', (ws, req) => {
         case 'message': handleMessage(ws, msg); break;
         case 'edit_message': handleEditMessage(ws, msg); break;
         case 'delete_message': handleDeleteMessage(ws, msg); break;
+        case 'forward_message': handleForwardMessage(ws, msg); break;
         case 'reaction': handleReaction(ws, msg); break;
         case 'create_channel': handleCreateChannel(ws, msg); break;
         case 'create_group': handleCreateGroup(ws, msg); break;
         case 'update_profile': handleUpdateProfile(ws, msg); break;
+        case 'search_users': handleSearchUsers(ws, msg); break;
+        case 'send_friend_request': handleSendFriendRequest(ws, msg); break;
+        case 'accept_friend_request': handleAcceptFriendRequest(ws, msg); break;
+        case 'reject_friend_request': handleRejectFriendRequest(ws, msg); break;
+        case 'remove_friend': handleRemoveFriend(ws, msg); break;
+        case 'block_user': handleBlockUser(ws, msg); break;
+        case 'unblock_user': handleUnblockUser(ws, msg); break;
+        case 'pin_chat': handlePinChat(ws, msg); break;
+        case 'unpin_chat': handleUnpinChat(ws, msg); break;
+        case 'pin_message': handlePinMessage(ws, msg); break;
+        case 'unpin_message': handleUnpinMessage(ws, msg); break;
+        case 'invite_to_channel': handleInviteToChannel(ws, msg); break;
+        case 'accept_channel_invite': handleAcceptChannelInvite(ws, msg); break;
+        case 'convert_to_server': handleConvertToServer(ws, msg); break;
+        case 'create_server_channel': handleCreateServerChannel(ws, msg); break;
+        case 'create_server_role': handleCreateServerRole(ws, msg); break;
+        case 'send_sticker': handleSendSticker(ws, msg); break;
+        case 'create_sticker_pack': handleCreateStickerPack(ws, msg); break;
         case 'mark_read': handleMarkRead(ws, msg); break;
         case 'toggle_developer_mode': handleToggleDeveloperMode(ws, msg); break;
         case 'admin_action': handleAdminAction(ws, msg); break;
@@ -290,8 +383,13 @@ wss.on('connection', (ws, req) => {
       const userData = { ...user };
       delete userData.password;
       
+      // Получаем список друзей
+      const userFriends = db.friends[user.id] || [];
+      
+      // Чаты только с друзьями
       const userChats = Object.values(db.chats).filter(chat =>
-        chat.participants.includes(user.id)
+        chat.participants.includes(user.id) &&
+        chat.participants.some(p => userFriends.includes(p) || p.includes('_bot'))
       );
       
       const userGroups = Object.values(db.groups).filter(group =>
@@ -326,6 +424,13 @@ wss.on('connection', (ws, req) => {
         channels: userChannels,
         messages: allMessages,
         unreadCounts: allUnread,
+        friends: userFriends,
+        friendRequests: db.friendRequests[user.id] || [],
+        blockedUsers: db.blockedUsers[user.id] || [],
+        pinnedChats: db.pinnedChats[user.id] || [],
+        pinnedMessages: db.pinnedMessages[user.id] || {},
+        stickerPacks: db.stickerPacks,
+        userStickers: db.userStickers[user.id] || ['default'],
         serverHost: clientHost
       }));
       
@@ -358,6 +463,12 @@ wss.on('connection', (ws, req) => {
     };
     
     db.users[newUser.id] = newUser;
+    db.friends[newUser.id] = [];
+    db.friendRequests[newUser.id] = [];
+    db.blockedUsers[newUser.id] = [];
+    db.pinnedChats[newUser.id] = [];
+    db.pinnedMessages[newUser.id] = {};
+    db.userStickers[newUser.id] = ['default'];
     saveDB();
     
     ws.send(JSON.stringify({ type: 'register_success' }));
@@ -385,7 +496,9 @@ wss.on('connection', (ws, req) => {
       fileData: msg.fileData,
       fileName: msg.fileName,
       edited: false,
-      formatting: msg.formatting || null
+      formatting: msg.formatting || null,
+      forwarded: msg.forwarded || false,
+      forwardedFrom: msg.forwardedFrom || null
     };
     
     db.messages[chatId].push(newMessage);
@@ -402,6 +515,35 @@ wss.on('connection', (ws, req) => {
     
     saveDB();
     broadcast({ type: 'new_message', message: newMessage });
+  }
+  
+  function handleForwardMessage(ws, msg) {
+    const originalMsg = (db.messages[msg.fromChatId] || []).find(m => m.id === msg.messageId);
+    if (!originalMsg) return;
+    
+    msg.toChatIds.forEach(chatId => {
+      const forwarded = {
+        id: crypto.randomBytes(8).toString('hex'),
+        chatId,
+        sender: currentUserId,
+        text: originalMsg.text,
+        timestamp: Date.now(),
+        type: originalMsg.type,
+        reactions: {},
+        fileData: originalMsg.fileData,
+        fileName: originalMsg.fileName,
+        forwarded: true,
+        forwardedFrom: originalMsg.sender,
+        forwardedOriginalTime: originalMsg.timestamp
+      };
+      
+      if (!db.messages[chatId]) db.messages[chatId] = [];
+      db.messages[chatId].push(forwarded);
+      
+      broadcast({ type: 'new_message', message: forwarded });
+    });
+    
+    saveDB();
   }
   
   function handleEditMessage(ws, msg) {
@@ -472,6 +614,274 @@ wss.on('connection', (ws, req) => {
     }
   }
   
+  function handleSearchUsers(ws, msg) {
+    const query = msg.query.toLowerCase();
+    const results = Object.values(db.users)
+      .filter(u => !u.isBot && u.username.toLowerCase().includes(query))
+      .map(u => {
+        const userData = { ...u };
+        delete userData.password;
+        const isFriend = (db.friends[currentUserId] || []).includes(u.id);
+        const hasRequest = (db.friendRequests[u.id] || []).some(r => r.from === currentUserId);
+        userData.isFriend = isFriend;
+        userData.hasPendingRequest = hasRequest;
+        return userData;
+      })
+      .slice(0, 10);
+    
+    ws.send(JSON.stringify({
+      type: 'search_results',
+      results
+    }));
+  }
+  
+  function handleSendFriendRequest(ws, msg) {
+    const targetUser = db.users[msg.targetUserId];
+    if (!targetUser) return;
+    
+    if (!db.friendRequests[msg.targetUserId]) db.friendRequests[msg.targetUserId] = [];
+    
+    const existing = db.friendRequests[msg.targetUserId].find(r => r.from === currentUserId);
+    if (!existing) {
+      db.friendRequests[msg.targetUserId].push({
+        from: currentUserId,
+        timestamp: Date.now()
+      });
+      
+      saveDB();
+      
+      sendToUser(msg.targetUserId, {
+        type: 'friend_request',
+        from: currentUserId,
+        user: db.users[currentUserId]
+      });
+    }
+  }
+  
+  function handleAcceptFriendRequest(ws, msg) {
+    if (!db.friends[currentUserId]) db.friends[currentUserId] = [];
+    if (!db.friends[msg.userId]) db.friends[msg.userId] = [];
+    
+    db.friends[currentUserId].push(msg.userId);
+    db.friends[msg.userId].push(currentUserId);
+    
+    db.friendRequests[currentUserId] = (db.friendRequests[currentUserId] || [])
+      .filter(r => r.from !== msg.userId);
+    
+    const chatId = createChat(currentUserId, msg.userId);
+    
+    saveDB();
+    
+    sendToUser(msg.userId, {
+      type: 'friend_added',
+      friendId: currentUserId,
+      chatId
+    });
+    
+    ws.send(JSON.stringify({
+      type: 'friend_added',
+      friendId: msg.userId,
+      chatId
+    }));
+  }
+  
+  function handleRejectFriendRequest(ws, msg) {
+    db.friendRequests[currentUserId] = (db.friendRequests[currentUserId] || [])
+      .filter(r => r.from !== msg.userId);
+    saveDB();
+  }
+  
+  function handleRemoveFriend(ws, msg) {
+    db.friends[currentUserId] = (db.friends[currentUserId] || [])
+      .filter(id => id !== msg.userId);
+    db.friends[msg.userId] = (db.friends[msg.userId] || [])
+      .filter(id => id !== currentUserId);
+    
+    saveDB();
+    
+    sendToUser(msg.userId, {
+      type: 'friend_removed',
+      userId: currentUserId
+    });
+  }
+  
+  function handleBlockUser(ws, msg) {
+    if (!db.blockedUsers[currentUserId]) db.blockedUsers[currentUserId] = [];
+    if (!db.blockedUsers[currentUserId].includes(msg.userId)) {
+      db.blockedUsers[currentUserId].push(msg.userId);
+      saveDB();
+    }
+  }
+  
+  function handleUnblockUser(ws, msg) {
+    db.blockedUsers[currentUserId] = (db.blockedUsers[currentUserId] || [])
+      .filter(id => id !== msg.userId);
+    saveDB();
+  }
+  
+  function handlePinChat(ws, msg) {
+    if (!db.pinnedChats[currentUserId]) db.pinnedChats[currentUserId] = [];
+    if (!db.pinnedChats[currentUserId].includes(msg.chatId)) {
+      db.pinnedChats[currentUserId].push(msg.chatId);
+      saveDB();
+    }
+  }
+  
+  function handleUnpinChat(ws, msg) {
+    db.pinnedChats[currentUserId] = (db.pinnedChats[currentUserId] || [])
+      .filter(id => id !== msg.chatId);
+    saveDB();
+  }
+  
+  function handlePinMessage(ws, msg) {
+    if (!db.pinnedMessages[currentUserId]) db.pinnedMessages[currentUserId] = {};
+    db.pinnedMessages[currentUserId][msg.chatId] = msg.messageId;
+    saveDB();
+    
+    broadcast({
+      type: 'message_pinned',
+      chatId: msg.chatId,
+      messageId: msg.messageId
+    });
+  }
+  
+  function handleUnpinMessage(ws, msg) {
+    if (db.pinnedMessages[currentUserId]) {
+      delete db.pinnedMessages[currentUserId][msg.chatId];
+      saveDB();
+    }
+  }
+  
+  function handleInviteToChannel(ws, msg) {
+    const targetUser = db.users[msg.targetUsername];
+    if (!targetUser) return;
+    
+    const channel = db.channels[msg.channelId] || db.groups[msg.channelId];
+    if (!channel) return;
+    
+    sendToUser(targetUser.id, {
+      type: 'channel_invite',
+      from: currentUserId,
+      fromUser: db.users[currentUserId],
+      channel,
+      channelId: msg.channelId
+    });
+  }
+  
+  function handleAcceptChannelInvite(ws, msg) {
+    const channel = db.channels[msg.channelId];
+    const group = db.groups[msg.channelId];
+    
+    if (channel) {
+      if (!channel.subscribers.includes(currentUserId)) {
+        channel.subscribers.push(currentUserId);
+        saveDB();
+      }
+    } else if (group) {
+      if (!group.members.includes(currentUserId)) {
+        group.members.push(currentUserId);
+        saveDB();
+      }
+    }
+    
+    ws.send(JSON.stringify({
+      type: 'joined_channel',
+      channel: channel || group
+    }));
+  }
+  
+  function handleConvertToServer(ws, msg) {
+    const group = db.groups[msg.groupId];
+    if (!group || !group.admins.includes(currentUserId)) return;
+    
+    const server = createServer(msg.groupId);
+    
+    broadcast({
+      type: 'server_created',
+      server,
+      groupId: msg.groupId
+    });
+  }
+  
+  function handleCreateServerChannel(ws, msg) {
+    const server = db.servers[msg.serverId];
+    if (!server) return;
+    
+    const category = server.categories.find(c => c.id === msg.categoryId);
+    if (!category) return;
+    
+    category.channels.push({
+      id: 'ch_' + crypto.randomBytes(6).toString('hex'),
+      name: msg.channelName,
+      type: msg.channelType || 'text'
+    });
+    
+    saveDB();
+    broadcast({
+      type: 'server_updated',
+      server
+    });
+  }
+  
+  function handleCreateServerRole(ws, msg) {
+    const server = db.servers[msg.serverId];
+    if (!server) return;
+    
+    server.roles.push({
+      id: 'role_' + crypto.randomBytes(6).toString('hex'),
+      name: msg.roleName,
+      color: msg.roleColor,
+      permissions: msg.permissions || []
+    });
+    
+    saveDB();
+    broadcast({
+      type: 'server_updated',
+      server
+    });
+  }
+  
+  function handleSendSticker(ws, msg) {
+    const chatId = msg.chatId;
+    if (!db.messages[chatId]) db.messages[chatId] = [];
+    
+    const stickerMsg = {
+      id: crypto.randomBytes(8).toString('hex'),
+      chatId,
+      sender: currentUserId,
+      timestamp: Date.now(),
+      type: 'sticker',
+      sticker: msg.sticker,
+      reactions: {}
+    };
+    
+    db.messages[chatId].push(stickerMsg);
+    saveDB();
+    
+    broadcast({ type: 'new_message', message: stickerMsg });
+  }
+  
+  function handleCreateStickerPack(ws, msg) {
+    const packId = 'pack_' + crypto.randomBytes(8).toString('hex');
+    
+    db.stickerPacks[packId] = {
+      id: packId,
+      name: msg.name,
+      stickers: msg.stickers,
+      creator: currentUserId
+    };
+    
+    if (!db.userStickers[currentUserId]) db.userStickers[currentUserId] = ['default'];
+    db.userStickers[currentUserId].push(packId);
+    
+    saveDB();
+    
+    ws.send(JSON.stringify({
+      type: 'sticker_pack_created',
+      pack: db.stickerPacks[packId]
+    }));
+  }
+  
   function handleCreateChannel(ws, msg) {
     const channel = createChannel(msg.name, msg.username, msg.description, currentUserId);
     channel.inviteLink = `http://${clientHost}/join/${msg.username}`;
@@ -524,22 +934,35 @@ wss.on('connection', (ws, req) => {
     const user = db.users[currentUserId];
     if (user) {
       user.developerMode = msg.enabled;
-      saveDB();
       
-      if (msg.enabled && !user.apiKey) {
-        sendRobotBuilderWelcome(currentUserId);
+      if (msg.enabled) {
+        const chatId = createChat('robot_builder_bot', currentUserId);
+        const result = sendRobotBuilderWelcome(currentUserId);
+        
+        if (!db.friends[currentUserId]) db.friends[currentUserId] = [];
+        if (!db.friends[currentUserId].includes('robot_builder_bot')) {
+          db.friends[currentUserId].push('robot_builder_bot');
+        }
+        
+        const userChats = Object.values(db.chats).filter(chat =>
+          chat.participants.includes(currentUserId)
+        );
         
         ws.send(JSON.stringify({
           type: 'developer_mode_updated',
           enabled: true,
-          apiKey: user.apiKey
+          apiKey: result.apiKey,
+          chats: userChats,
+          newChatId: chatId
         }));
       } else {
         ws.send(JSON.stringify({
           type: 'developer_mode_updated',
-          enabled: msg.enabled
+          enabled: false
         }));
       }
+      
+      saveDB();
     }
   }
   
@@ -646,13 +1069,8 @@ wss.on('connection', (ws, req) => {
   }
 });
 
-app.get('/join/:username', (req, res) => {
-  res.redirect('/');
-});
-
-app.get('/join/g/:code', (req, res) => {
-  res.redirect('/');
-});
+app.get('/join/:username', (req, res) => res.redirect('/'));
+app.get('/join/g/:code', (req, res) => res.redirect('/'));
 
 process.on('SIGINT', () => {
   console.log('\nShutting down...');
